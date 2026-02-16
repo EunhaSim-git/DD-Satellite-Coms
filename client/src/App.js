@@ -12,7 +12,7 @@ function App() {
 
   useEffect(() => {
     async function fetchTLEs() {
-      const response = await fetch("/api/irridium/tle");
+      const response = await fetch("/api/iridium/tle");
       const data = await response.json();
 
       const now = new Date();
@@ -84,7 +84,7 @@ function App() {
   return (
     <Globe
       ref={globeRef}
-      globeImageUrl="//cdn.jsdelivr.net/npm/three-globe/example/img/earth-blue-marble.jpg"
+      globeImageUrl="/earth-blue-marble.jpg"
       pointsData={positions}
       pointLat="lat"
       pointLng="lng"
