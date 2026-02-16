@@ -10,14 +10,14 @@ const PORT = process.env.PORT || 3001; // Use port 3001 for the server
 
 app.use(express.static(path.resolve(__dirname, '../client/build')));
 
-app.get('/api/irridium/tle', async (req, res) => {
+app.get('/api/iridium/tle', async (req, res) => {
   try {
     const apiKey = process.env.N2YO_API_KEY;
     if (!apiKey) {
       return res.status(500).json({ error: 'Missing N2YO_API_KEY in environment variables' });
     }
 
-    const filePath = path.resolve(__dirname, 'irridium.json');
+    const filePath = path.resolve(__dirname, 'iridium.json');
     const fileData = JSON.parse(fs.readFileSync(filePath, 'utf-8'));
 
     const noradIds = fileData.testNoradIDs;
@@ -50,14 +50,14 @@ app.get('/api/irridium/tle', async (req, res) => {
     res.status(500).json({ error: 'Failed to fetch TLE data' });
   }
 });
-app.get('/api/irridium/pos', async (req, res) => {
+app.get('/api/iridium/pos', async (req, res) => {
   try {
     const apiKey = process.env.N2YO_API_KEY;
     if (!apiKey) {
       return res.status(500).json({ error: 'Missing N2YO_API_KEY in environment variables' });
     }
 
-    const filePath = path.resolve(__dirname, 'irridium.json');
+    const filePath = path.resolve(__dirname, 'iridium.json');
     const fileData = JSON.parse(fs.readFileSync(filePath, 'utf-8'));
 
     const noradIds = fileData.testNoradIDs;
