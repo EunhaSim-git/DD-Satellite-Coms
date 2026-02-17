@@ -22,13 +22,13 @@ function App() {
 
     // Filter visible + size by elevation
     const positions = data.satellites
-      .filter(s => s.elevation > 0)
+      //.filter(s => s.elevation > 0) // by commenting out, send all 18 sat regardless of elevation
       .map(s => ({
         noradId: s.noradId,
         lat: s.lat,
         lng: s.lng,
         altitude: s.altitudeKm / 6371,
-        size: Math.max(0.3, s.elevation / 20),  // Bigger = higher elev
+        size: Math.max(0.3, (s.elevation || 0) / 20),  // Bigger = higher elev
         available: s.available,
         elevation: s.elevation
       }));
@@ -76,8 +76,9 @@ function App() {
       
       {/* Constellation Tabs */}
       <select value={constellation} onChange={(e) => setConstellation(e.target.value)}>
-        <option value="iridium">Iridium (66 sats)</option>
+        <option value="iridium">Iridium (66 sats)</option>  
         <option value="starlink">Starlink (7k+ sats)</option>
+        <option value="kuiper">Kuiper (3k+ sats)</option>
       </select>
       
       {/* Refresh Button */}
@@ -99,7 +100,7 @@ function App() {
       pointLng="lng"
       pointAltitude="altitude"
       pointColor={(d) => d.available ? 'lime' : 'red'}  // Green=usable!
-      pointRadius={(d) => Math.max(0.2, (d.elevation || 0) / 50)}
+      pointRadius="size"
       pointsTransitionDuration={500}
       heatmapsData={heatmapData ? [heatmapData] : []}
       heatmapBandwidth={2.5}
