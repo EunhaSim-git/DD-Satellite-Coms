@@ -92,6 +92,27 @@ body, html, #root {
   color: #61dafb;
 }
 
+.stats-panel {
+  position: absolute;
+  top: 20px;
+  right: 20px;
+  background: rgba(0, 0, 0, 0.8);
+  padding: 1.5rem;
+  border-radius: 12px;
+  border: 1px solid rgba(97, 218, 251, 0.3);
+  backdrop-filter: blur(10px);
+}
+
+.stats-panel span {
+  display: block;
+  margin: 0.5rem 0;
+  font-size: 1.1rem;
+  font-weight: bold;
+}
+
+.stats-visible { color: #10b981; }
+.stats-total { color: #f59e0b; }
+
 .info {
   position: absolute;
   bottom: 20px;
@@ -117,9 +138,51 @@ body, html, #root {
     width: 100%;
     margin: 0.25rem 0;
   }
+
+  .dual-maps {
+    grid-template-columns: 1fr;
+    height: calc(100vh - 280px);
+    top: 280px;
+  }
 }
 
-/* Globe animations (optional) */
+/* Globe animations */
 .globe-container {
   height: 100vh;
+}
+
+/* Dual map layout */
+.dual-maps {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 20px;
+  height: calc(100vh - 200px);  /* Full height minus controls */
+  margin: 20px;
+  position: absolute;
+  top: 220px;  /* Below controls */
+  left: 0;
+  right: 0;
+  z-index: 1;
+}
+
+.map-container {
+  border: 2px solid rgba(97, 218, 251, 0.3);
+  border-radius: 12px;
+  position: relative;
+  background: #111;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.6);
+}
+
+.constellation-label {
+  position: absolute;
+  top: 15px;
+  left: 15px;
+  background: linear-gradient(135deg, rgba(97, 218, 251, 0.9), rgba(33, 177, 212, 0.9));
+  color: #000;
+  padding: 0.75rem 1.25rem;
+  border-radius: 25px;
+  font-weight: 700;
+  font-size: 0.95rem;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+  z-index: 1000;
 }
