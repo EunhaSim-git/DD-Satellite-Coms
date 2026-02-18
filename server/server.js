@@ -29,36 +29,50 @@ function parseTLEs(tleText) {
 }
 
 async function getConstellationTLEs(constellation) {
+  const USE_STATIC = true; // Set to false to fetch live TLEs from Celestrak
+
+
   const groups = { 'iridium': 'iridium', 'starlink': 'starlink', 'kuiper': 'kuiper' };
   const group = groups[constellation];
   if (!group) throw new Error(`Unknown constellation: ${constellation}`);
 
   const url = `https://celestrak.org/NORAD/elements/gp.php?GROUP=${group.toUpperCase()}&FORMAT=tle&LIMIT=50`;
-  
-  try {
-    const resp = await axios.get(url, { timeout: 10000,
-    headers: { 
-      'User-Agent': 'Mozilla/5.0 (Satellite-Demo/1.0)'  // Polite bot
-    } });
-    const tleCount = parseTLEs(resp.data).length;
-    console.log(`LIVE ${group}: ${tleCount} TLEs`);
-    return parseTLEs(resp.data);
-  } catch (err) {
-    if (err.response?.status === 403 || err.code === 'ECONNABORTED') {
-      const fallbackPath = path.join(__dirname, 'tle-samples', `${constellation}.txt`);
-      if (fs.existsSync(fallbackPath)) {
-        const tleData = fs.readFileSync(fallbackPath, 'utf8');
-        const tleCount = parseTLEs(tleData).length;
-        console.log(`FALLBACK ${group}: ${tleCount} TLEs (${group}.txt)`);
-        return parseTLEs(tleData);
+  if (!USE_STATIC) {
+    try {
+      
+      const resp = await axios.get(url, { timeout: 10000,
+      headers: { 
+        'User-Agent': 'Mozilla/5.0 (Satellite-Demo/1.0)'  // Polite bot
+      } });
+      const tleCount = parseTLEs(resp.data).length;
+      console.log(`LIVE ${group}: ${tleCount} TLEs`);
+      return parseTLEs(resp.data);
+    } catch (err) {
+      if (err.response?.status === 403 || err.code === 'ECONNABORTED') {
+        const fallbackPath = path.join(__dirname, 'tle-samples', `${constellation}.txt`);
+        if (fs.existsSync(fallbackPath)) {
+          const tleData = fs.readFileSync(fallbackPath, 'utf8');
+          const tleCount = parseTLEs(tleData).length;
+          console.log(`FALLBACK ${group}: ${tleCount} TLEs (${group}.txt)`);
+          return parseTLEs(tleData);
+        }
       }
+      console.error(`${group}:`, err.message);
+      throw new Error(`Failed to fetch ${group} TLEs`);
     }
-    console.error(`${group}:`, err.message);
-    throw new Error(`Failed to fetch ${group} TLEs`);
+  }
+  else{
+    const fallbackPath = path.join(__dirname, 'tle-samples', `${constellation}.txt`);
+        if (fs.existsSync(fallbackPath)) {
+          const tleData = fs.readFileSync(fallbackPath, 'utf8');
+          const tleCount = parseTLEs(tleData).length;
+          console.log(`USING STATIC FILES, ${group}: ${tleCount} TLEs (${group}.txt)`);
+          return parseTLEs(tleData);
+        }
   }
 }
 
-app.use(express.static(path.resolve(__dirname, '../client/build')));
+app.use(express.static(path.resolve(__dirname, '../client/dist')));
 /*
 app.get('/api/iridium/tle', async (req, res) => {
   try {

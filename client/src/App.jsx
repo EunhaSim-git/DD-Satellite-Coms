@@ -1,8 +1,8 @@
 import './App.css';
 import { useEffect, useState, useCallback, useRef } from "react";
-import Globe from 'react-globe.gl';
 import { generateHeatmap } from "./satUtil";
 import SatelliteMap from './components/SatelliteMap';
+import CesiumGlobe from './components/CesiumGlobe';
 
 function App() {
   const [lat, setLat] = useState(45.42);  // Ottawa
@@ -135,22 +135,10 @@ function App() {
           />
         </div>
       ) : (
-        <div className="globe-container" style={{ height: '70vh' }}>
-          <Globe
-            ref={globeRef}
-            globeImageUrl="/earth-blue-marble.jpg"
-            pointsData={positions}
-            pointLat="lat"
-            pointLng="lng"
-            pointAltitude="altitude"
-            pointColor={d => (d.available ? 'lime' : 'red')}
-            pointRadius="size"
-            pointsTransitionDuration={500}
-            heatmapsData={heatmapData ? [heatmapData] : []}
-            heatmapBandwidth={2.5}
-            heatmapColorSaturation={1.5}
-          />
-        </div>
+        
+       <div className="globe-container" style={{ height: '70vh' }}>
+          <CesiumGlobe positions={coverage1} lat={lat} lng={lng} />
+       </div>
       )}
         <div className="info">
           🟢 elev&gt;10°+low loss | 🔴 horizon/high loss | 📡 station | 5s live
