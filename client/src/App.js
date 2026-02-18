@@ -1,118 +1,162 @@
 import './App.css';
+import { useEffect, useState, useCallback, useRef } from "react";
 import Globe from 'react-globe.gl';
-import * as satellite from "satellite.js";
-import { useEffect, useState, useRef } from "react";
-import { generateHeatmap} from "./satUtil";
+import { generateHeatmap } from "./satUtil";
+import SatelliteMap from './components/SatelliteMap';
 
 function App() {
-  const [coverageData, setCoverageData] = useState({ satellites: [] });
   const [lat, setLat] = useState(45.42);  // Ottawa
   const [lng, setLng] = useState(-75.7);
-  const [constellation, setConstellation] = useState('iridium');
+  const [constellation1, setConstellation1] = useState('iridium');
+  const [constellation2, setConstellation2] = useState('starlink');
+  const [coverage1, setCoverage1] = useState([]);
+  const [coverage2, setCoverage2] = useState([]);
+  const [viewMode, setViewMode] = useState('maps');  // 'globe' or 'maps'
   const [heatmapData, setHeatmapData] = useState([]);
   const [positions, setPositions] = useState([]);
   const globeRef = useRef();
 
-  // Fetch coverage (dynamic location)
-  async function fetchCoverage() {
-    const params = new URLSearchParams({ lat, lng, alt: 100 });
-    const response = await fetch(`/api/${constellation}/coverage?${params}`);
-    const data = await response.json();
-    setCoverageData(data);
+  // Live stats
+  const visible1 = coverage1.filter(s => s.available).length;
+  const visible2 = coverage2.filter(s => s.available).length;
 
-    // Filter visible + size by elevation
-    const positions = data.satellites
-      .filter(s => s.elevation > 0)
-      .map(s => ({
-        noradId: s.noradId,
-        lat: s.lat,
-        lng: s.lng,
-        altitude: s.altitudeKm / 6371,
-        size: Math.max(0.3, s.elevation / 20),  // Bigger = higher elev
-        available: s.available,
-        elevation: s.elevation
-      }));
+  const fetchBoth = useCallback(async () => {
+    const params = new URLSearchParams({ lat: lat.toFixed(4), lng: lng.toFixed(4), alt: '100' });
 
-    setPositions(positions);
-    const heatmap = generateHeatmap(positions);
-    setHeatmapData(heatmap);
-  }
+    try {
+      if (viewMode === 'maps') {
+        // Dual maps: fetch both constellations
+        const [data1, data2] = await Promise.all([
+          fetch(`/api/${constellation1}/coverage?${params}`).then(r => r.json()),
+          fetch(`/api/${constellation2}/coverage?${params}`).then(r => r.json())
+        ]);
+
+        setCoverage1(data1.satellites || []);
+        setCoverage2(data2.satellites || []);
+
+        // Globe data not needed in maps view
+        setPositions([]);
+        setHeatmapData([]);
+      } else {
+        // Globe: only constellation1
+        const data1 = await fetch(`/api/${constellation1}/coverage?${params}`).then(r => r.json());
+        const sats = data1.satellites || [];
+
+        setCoverage1(sats);
+        setCoverage2([]); // no constellation2 in globe view
+
+        const globeSats = sats.map(s => ({
+          noradId: s.noradId,
+          lat: s.lat,
+          lng: s.lng,
+          altitude: s.altitudeKm / 6371,
+          size: Math.max(0.3, Math.abs(s.elevation || 0) / 20),
+          available: s.available
+        }));
+
+        setPositions(globeSats);
+        setHeatmapData(generateHeatmap(globeSats));
+      }
+    } catch (error) {
+      console.error('Fetch failed:', error);
+    }
+  }, [constellation1, constellation2, lat, lng, viewMode, generateHeatmap]);
+
 
   useEffect(() => {
-    fetchCoverage();  // Initial Ottawa
+    fetchBoth();  // Initial Ottawa
   }, []);
 
   useEffect(() => {
-    const interval = setInterval(fetchCoverage, 5000);  // Update every 5s
+    const interval = setInterval(fetchBoth, 60000);
     return () => clearInterval(interval);
-  }, [lat, lng, constellation]);  // Re-fetch on location change
+  }, [fetchBoth]);
 
   return (
-  <div className="App">
-    {/* Top Controls Panel */}
-    <div className="controls">
-      <h2>Sat Coverage Toolkit</h2>
+    <div className="App">
+      {/* Top Controls Panel */}
+      <div className="controls">
+        <h2>Satellite Coverage Comparator</h2>
+        <div className="view-toggle" style={{marginBottom: '15px'}}>
+          <label style={{fontSize: '14px'}}>
+            View: 
+            <select value={viewMode} onChange={e => setViewMode(e.target.value)}>
+              <option value="maps">Dual Maps</option>
+              <option value="globe">3D Globe</option>
+            </select>
+          </label>
+        </div>
       
-      {/* Location Inputs */}
-      <label>
-        Lat: 
-        <input 
-          type="number" 
-          step="0.01" 
-          value={lat} 
-          onChange={(e) => setLat(+e.target.value)} 
-        />
-      </label>
+        {/* Location */}
+        <label>Lat: <input type="number" step="0.01" value={lat} onChange={e => setLat(+e.target.value)} /></label>
+        <label>Lng: <input type="number" step="0.01" value={lng} onChange={e => setLng(+e.target.value)} /></label>
       
-      <label>
-        Lng: 
-        <input 
-          type="number" 
-          step="0.01" 
-          value={lng} 
-          onChange={(e) => setLng(+e.target.value)} 
-        />
-      </label>
+        {/* Constellation Tabs */}
+        {viewMode === 'maps' ? (
+          <div style={{ display: 'flex', gap: '10px', alignItems: 'center', margin: '15px 0' }}>
+            <select value={constellation1} onChange={e => setConstellation1(e.target.value)}>
+              <option value="iridium">Iridium</option>
+              <option value="starlink">Starlink</option>
+              <option value="kuiper">Kuiper</option>
+            </select>
+            <span style={{ color: '#61dafb', fontWeight: 'bold' }}>VS</span>
+            <select value={constellation2} onChange={e => setConstellation2(e.target.value)}>
+              <option value="iridium">Iridium</option>
+              <option value="starlink">Starlink</option>
+              <option value="kuiper">Kuiper</option>
+            </select>
+          </div>
+        ) : (
+          <div style={{ margin: '15px 0' }}>
+            <select value={constellation1} onChange={e => setConstellation1(e.target.value)}>
+              <option value="iridium">Iridium</option>
+              <option value="starlink">Starlink</option>
+              <option value="kuiper">Kuiper</option>
+            </select>
+          </div>
+        )}
       
-      {/* Constellation Tabs */}
-      <select value={constellation} onChange={(e) => setConstellation(e.target.value)}>
-        <option value="iridium">Iridium (66 sats)</option>
-        <option value="starlink">Starlink (7k+ sats)</option>
-      </select>
-      
-      {/* Refresh Button */}
-      <button onClick={fetchCoverage}>Refresh Coverage</button>
-      
-      {/* Live Stats */}
-      <div className="stats">
-        <span>Visible: {coverageData.satellites.filter(s => s.available).length}</span>
-        <span>Max Elev: {Math.max(...coverageData.satellites.map(s => s.elevation || 0)).toFixed(1)}°</span>
+        <button onClick={fetchBoth}>Refresh Coverage</button>
       </div>
+      
+      {viewMode === 'maps' ? (
+        <div className="dual-maps">
+          <SatelliteMap
+            constellation={constellation1}
+            coverage={coverage1}
+            lat={lat}
+            lng={lng}
+          />
+          <SatelliteMap
+            constellation={constellation2}
+            coverage={coverage2}
+            lat={lat}
+            lng={lng}
+          />
+        </div>
+      ) : (
+        <div className="globe-container" style={{ height: '70vh' }}>
+          <Globe
+            ref={globeRef}
+            globeImageUrl="/earth-blue-marble.jpg"
+            pointsData={positions}
+            pointLat="lat"
+            pointLng="lng"
+            pointAltitude="altitude"
+            pointColor={d => (d.available ? 'lime' : 'red')}
+            pointRadius="size"
+            pointsTransitionDuration={500}
+            heatmapsData={heatmapData ? [heatmapData] : []}
+            heatmapBandwidth={2.5}
+            heatmapColorSaturation={1.5}
+          />
+        </div>
+      )}
+        <div className="info">
+          🟢 elev&gt;10°+low loss | 🔴 horizon/high loss | 📡 station | 5s live
+        </div>
     </div>
-    
-    {/* 3D Globe */}
-    <Globe
-      ref={globeRef}
-      globeImageUrl="/earth-blue-marble.jpg"
-      pointsData={positions}
-      pointLat="lat"
-      pointLng="lng"
-      pointAltitude="altitude"
-      pointColor={(d) => d.available ? 'lime' : 'red'}  // Green=usable!
-      pointRadius={(d) => Math.max(0.2, (d.elevation || 0) / 50)}
-      pointsTransitionDuration={500}
-      heatmapsData={heatmapData ? [heatmapData] : []}
-      heatmapBandwidth={2.5}
-      heatmapColorSaturation={1.5}
-    />
-    
-    {/* Bottom Info */}
-    <div className="info">
-      Ottawa: {lat.toFixed(2)}°, {lng.toFixed(2)}° | Drag=rotate • Scroll=zoom • Green=elev&gt;10°+low path loss
-    </div>
-  </div>
-);
-
+  );
 }
 
 export default App;
