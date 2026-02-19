@@ -159,6 +159,7 @@ app.get('/api/:constellation/coverage', async (req, res) => {
     const filtered = results.filter(Boolean);
     const visibleCount = filtered.filter(r => r.available).length;
     console.log(`📡 ${constellation}: ${visibleCount}/${filtered.length} visible`);
+console.log('maxSats received:', maxSats);
 
     res.json({ observer, constellation, satellites: filtered });
 
