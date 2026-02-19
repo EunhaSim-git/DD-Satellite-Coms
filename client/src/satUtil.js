@@ -17,39 +17,27 @@ function greatCircleDistance(lat1, lon1, lat2, lon2) {
 }
 
 function generateHeatmap(satellites) {
-  const EARTH_RADIUS = 6371; 
-  const POINT_SPACING_KM = 300; 
-  const MIN_ELEVATION_ANGLE = 10; // Iridium's typical minimum elevation angle in degrees
-  
+  const POINT_SPACING_KM = 300;
   const coveragePoints = [];
-  
+
   satellites.forEach((sat) => {
-    const h = sat.altitude * EARTH_RADIUS; 
-    
-    // Calculate coverage radius based on minimum elevation angle
-    // Using the formula: Earth Central Angle = arccos(R*cos(elevation)/(R+h)) - elevation
-    const elevRad = MIN_ELEVATION_ANGLE * Math.PI / 180;
-    const centralAngle = Math.acos(
-      EARTH_RADIUS * Math.cos(elevRad) / (EARTH_RADIUS + h)
-    ) - elevRad; 
-    
-    const coverageRadiusKm = EARTH_RADIUS * centralAngle;
-    
-    // Calculate approximate number of points needed based on area
-    const coverageAreaKm2 = Math.PI * coverageRadiusKm * coverageRadiusKm;
-    const pointsNeeded = Math.ceil(coverageAreaKm2 / (POINT_SPACING_KM * POINT_SPACING_KM));
-    
-    // Generate points using spiral/Fibonacci-like distribution
+    if (!sat.coverageRadiusKm) return;
+
+    const coverageAreaKm2 = Math.PI * sat.coverageRadiusKm * sat.coverageRadiusKm;
+    const pointsNeeded = Math.ceil(
+      coverageAreaKm2 / (POINT_SPACING_KM * POINT_SPACING_KM)
+    );
+
     const points = generatePointsInCircle(
-      sat.lat, 
-      sat.lng, 
-      coverageRadiusKm, 
+      sat.lat,
+      sat.lng,
+      sat.coverageRadiusKm,
       pointsNeeded
     );
-    
+
     coveragePoints.push(...points);
   });
-  
+
   return coveragePoints;
 }
 

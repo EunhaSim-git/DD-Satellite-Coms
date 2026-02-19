@@ -27,6 +27,7 @@ function parseTLEs(tleText) {
 
   return sats.slice(0, 30); // Limit to first 30 sats for speed
 }
+
 const CACHE_DIR = path.join(__dirname, 'tle-cache');
 const MIN_REFRESH_MS = 2 * 60 * 60 * 1000; // 2 hours
 
@@ -37,8 +38,8 @@ if (!fs.existsSync(CACHE_DIR)) {
 function isStale(filePath) {
   if (!fs.existsSync(filePath)) return true;
   const stats = fs.statSync(filePath);
-  const age = Date.now() - stats.mtimeMs;
-  return age > MIN_REFRESH_MS;
+  const ageMs = Date.now() - stats.mtimeMs;
+  return ageMs > MIN_REFRESH_MS;
 }
 
 async function getConstellationTLEs(constellation) {
@@ -54,16 +55,16 @@ async function getConstellationTLEs(constellation) {
   const cachePath = path.join(CACHE_DIR, `${group}.tle`);
   const url = `https://celestrak.org/NORAD/elements/gp.php?GROUP=${group.toUpperCase()}&FORMAT=TLE`;
 
-  // Use cache if fresh
+  //  Use cache if fresh
   if (!isStale(cachePath)) {
-    console.log(`Using cached ${group}`);
+    console.log(`🗂 Using cached ${group}`);
     const tleData = fs.readFileSync(cachePath, 'utf8');
     return parseTLEs(tleData);
   }
 
-  // Fetch fresh if stale
+  //  Fetch fresh if stale
   try {
-    console.log(`Fetching fresh ${group} from Celestrak`);
+    console.log(` Fetching fresh ${group} from CelesTrak`);
     const resp = await axios.get(url, {
       timeout: 10000,
       headers: {
@@ -71,22 +72,29 @@ async function getConstellationTLEs(constellation) {
       }
     });
 
-    fs.writeFileSync(cachePath, resp.data);
+    if (!resp.data || !resp.data.trim()) {
+      throw new Error('Empty TLE response');
+    }
+
+    fs.writeFileSync(cachePath, resp.data, 'utf8');
+    console.log(` Cached ${group} TLEs`);
+
     return parseTLEs(resp.data);
 
   } catch (err) {
-    console.error(`Fetch failed for ${group}:`, err.message);
+    console.error(` Fetch failed for ${group}:`, err.message);
 
-    // Fallback to cache if exists
+    // Fallback to stale cache if available
     if (fs.existsSync(cachePath)) {
-      console.log(`Falling back to stale cache for ${group}`);
+      console.log(` Falling back to stale cache for ${group}`);
       const tleData = fs.readFileSync(cachePath, 'utf8');
       return parseTLEs(tleData);
     }
 
-    throw new Error(`Failed to fetch ${group}`);
+    throw new Error(`Failed to fetch ${group} and no cache available`);
   }
 }
+
 
 app.use(express.static(path.resolve(__dirname, '../client/dist')));
 
@@ -112,6 +120,17 @@ app.get('/api/:constellation/coverage', async (req, res) => {
 
         const gmst = satellite.gstime(now);
         const geo = satellite.eciToGeodetic(pv.position, gmst);
+        const EARTH_RADIUS = 6371;
+        const MIN_ELEVATION_DEG = 10; // or per-constellation
+        const elevRad = MIN_ELEVATION_DEG * Math.PI / 180;
+
+        const h = geo.height; // already in km
+        const centralAngle =
+          Math.acos(
+            EARTH_RADIUS * Math.cos(elevRad) / (EARTH_RADIUS + h)
+          ) - elevRad;
+
+        const coverageRadiusKm = EARTH_RADIUS * centralAngle;
         const satPos = {
           lat: satellite.degreesLat(geo.latitude),
           lng: satellite.degreesLong(geo.longitude),
@@ -147,6 +166,7 @@ app.get('/api/:constellation/coverage', async (req, res) => {
             elevation: +(elevation).toFixed(1),
             rangeKm: Math.round(rangeKm),
             pathLossDb: Math.round(pathLossDb),
+            coverageRadiusKm,
             available: elevation > 10 && pathLossDb < 160
           });
           if (results.length % 5 === 0) {  // Every 5 sats
@@ -160,6 +180,7 @@ app.get('/api/:constellation/coverage', async (req, res) => {
             elevation: +(elevation).toFixed(1),
             rangeKm: null,
             pathLossDb: null,
+            coverageRadiusKm,
             available: false
           });
         }
