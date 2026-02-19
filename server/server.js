@@ -27,163 +27,69 @@ function parseTLEs(tleText) {
 
   return sats.slice(0, 30); // Limit to first 30 sats for speed
 }
+const CACHE_DIR = path.join(__dirname, 'tle-cache');
+const MIN_REFRESH_MS = 2 * 60 * 60 * 1000; // 2 hours
+
+if (!fs.existsSync(CACHE_DIR)) {
+  fs.mkdirSync(CACHE_DIR);
+}
+
+function isStale(filePath) {
+  if (!fs.existsSync(filePath)) return true;
+  const stats = fs.statSync(filePath);
+  const age = Date.now() - stats.mtimeMs;
+  return age > MIN_REFRESH_MS;
+}
 
 async function getConstellationTLEs(constellation) {
-  const USE_STATIC = true; // Set to false to fetch live TLEs from Celestrak
+  const groups = {
+    iridium: 'iridium',
+    starlink: 'starlink',
+    kuiper: 'kuiper'
+  };
 
-
-  const groups = { 'iridium': 'iridium', 'starlink': 'starlink', 'kuiper': 'kuiper' };
   const group = groups[constellation];
   if (!group) throw new Error(`Unknown constellation: ${constellation}`);
 
-  const url = `https://celestrak.org/NORAD/elements/gp.php?GROUP=${group.toUpperCase()}&FORMAT=tle&LIMIT=50`;
-  if (!USE_STATIC) {
-    try {
-      
-      const resp = await axios.get(url, { timeout: 10000,
-      headers: { 
-        'User-Agent': 'Mozilla/5.0 (Satellite-Demo/1.0)'  // Polite bot
-      } });
-      const tleCount = parseTLEs(resp.data).length;
-      console.log(`LIVE ${group}: ${tleCount} TLEs`);
-      return parseTLEs(resp.data);
-    } catch (err) {
-      if (err.response?.status === 403 || err.code === 'ECONNABORTED') {
-        const fallbackPath = path.join(__dirname, 'tle-samples', `${constellation}.txt`);
-        if (fs.existsSync(fallbackPath)) {
-          const tleData = fs.readFileSync(fallbackPath, 'utf8');
-          const tleCount = parseTLEs(tleData).length;
-          console.log(`FALLBACK ${group}: ${tleCount} TLEs (${group}.txt)`);
-          return parseTLEs(tleData);
-        }
-      }
-      console.error(`${group}:`, err.message);
-      throw new Error(`Failed to fetch ${group} TLEs`);
-    }
+  const cachePath = path.join(CACHE_DIR, `${group}.tle`);
+  const url = `https://celestrak.org/NORAD/elements/gp.php?GROUP=${group.toUpperCase()}&FORMAT=TLE`;
+
+  // Use cache if fresh
+  if (!isStale(cachePath)) {
+    console.log(`Using cached ${group}`);
+    const tleData = fs.readFileSync(cachePath, 'utf8');
+    return parseTLEs(tleData);
   }
-  else{
-    const fallbackPath = path.join(__dirname, 'tle-samples', `${constellation}.txt`);
-        if (fs.existsSync(fallbackPath)) {
-          const tleData = fs.readFileSync(fallbackPath, 'utf8');
-          const tleCount = parseTLEs(tleData).length;
-          console.log(`USING STATIC FILES, ${group}: ${tleCount} TLEs (${group}.txt)`);
-          return parseTLEs(tleData);
-        }
+
+  // Fetch fresh if stale
+  try {
+    console.log(`Fetching fresh ${group} from Celestrak`);
+    const resp = await axios.get(url, {
+      timeout: 10000,
+      headers: {
+        'User-Agent': 'Satellite-Demo/1.0 (educational use)'
+      }
+    });
+
+    fs.writeFileSync(cachePath, resp.data);
+    return parseTLEs(resp.data);
+
+  } catch (err) {
+    console.error(`Fetch failed for ${group}:`, err.message);
+
+    // Fallback to cache if exists
+    if (fs.existsSync(cachePath)) {
+      console.log(`Falling back to stale cache for ${group}`);
+      const tleData = fs.readFileSync(cachePath, 'utf8');
+      return parseTLEs(tleData);
+    }
+
+    throw new Error(`Failed to fetch ${group}`);
   }
 }
 
 app.use(express.static(path.resolve(__dirname, '../client/dist')));
-/*
-app.get('/api/iridium/tle', async (req, res) => {
-  try {
-    const apiKey = process.env.N2YO_API_KEY;
-    if (!apiKey) {
-      return res.status(500).json({ error: 'Missing N2YO_API_KEY in environment variables' });
-    }
 
-    const filePath = path.resolve(__dirname, 'iridium.json');
-    const fileData = JSON.parse(fs.readFileSync(filePath, 'utf-8'));
-
-    const noradIds = fileData.testNoradIDs;
-
-    // N2YO rate limits 
-    const results = [];
-
-    for (const id of noradIds) {
-      try {
-        const url = `https://api.n2yo.com/rest/v1/satellite/tle/${id}?apiKey=${apiKey}`;
-        const response = await axios.get(url);
-
-        results.push({
-          noradId: id,
-          tle: response.data.tle
-        });
-
-        // Small delay to avoid rate limit
-        await new Promise(resolve => setTimeout(resolve, 300));
-
-      } catch (err) {
-        console.error(`Failed for NORAD ${id}`);
-      }
-    }
-
-    res.json({ satellites: results });
-
-  } catch (error) {
-    console.error(error.message);
-    res.status(500).json({ error: 'Failed to fetch TLE data' });
-  }
-});
-
-app.get('/api/iridium/pos', async (req, res) => {
-  try {
-    const apiKey = process.env.N2YO_API_KEY;
-    if (!apiKey) {
-      return res.status(500).json({ error: 'Missing N2YO_API_KEY in environment variables' });
-    }
-
-    const filePath = path.resolve(__dirname, 'iridium.json');
-    const fileData = JSON.parse(fs.readFileSync(filePath, 'utf-8'));
-
-    const noradIds = fileData.testNoradIDs;
-
-    const results = [];
-
-    for (const id of noradIds) {
-      try {
-        const url = `https://api.n2yo.com/rest/v1/satellite/tle/${id}?apiKey=${apiKey}`;
-        const response = await axios.get(url);
-
-        const tleString = response.data.tle;
-
-        const [line1, line2] = tleString.trim().split(/\r?\n/);
-
-        const satrec = satellite.twoline2satrec(line1, line2);
-
-        const now = new Date();
-
-        const positionAndVelocity = satellite.propagate(satrec, now);
-
-        if (!positionAndVelocity.position) continue;
-
-        const gmst = satellite.gstime(now);
-
-        const geodetic = satellite.eciToGeodetic(
-          positionAndVelocity.position,
-          gmst
-        );
-
-        const latitude = satellite.degreesLat(geodetic.latitude);
-        const longitude = satellite.degreesLong(geodetic.longitude);
-
-        const altitudeKm = geodetic.height;
-
-        results.push({
-          noradId: id,
-          lat: latitude,
-          lng: longitude,
-          altitudeKm: altitudeKm,
-          altitudeRatio: altitudeKm / 6371 
-        });
-
-        await new Promise(resolve => setTimeout(resolve, 300));
-
-      } catch (err) {
-        console.error(`Failed for NORAD ${id}`, err.message);
-      }
-    }
-
-    res.json({
-      timestamp: new Date(),
-      satellites: results
-    });
-
-  } catch (error) {
-    console.error(error.message);
-    res.status(500).json({ error: 'Failed to fetch TLE data' });
-  }
-});
-*/
 app.get('/api/:constellation/coverage', async (req, res) => {
   const { lat = 45.42, lng = -75.7, alt = 100 } = req.query;
   const constellation = req.params.constellation;
