@@ -9,23 +9,8 @@ const UPDATE_HZ = 3;
 const ORBIT_POINTS = 180;
 const ORBIT_SPAN_MINUTES = 90;
 
-// Simple debounce helper
-function useDebounceCallback(callback, delay, deps = []) {
-  const timeoutRef = useRef(null);
 
-  const debounced = useCallback((...args) => {
-    if (timeoutRef.current) clearTimeout(timeoutRef.current);
-    timeoutRef.current = setTimeout(() => callback(...args), delay);
-  }, deps);
-
-  useEffect(() => {
-    return () => clearTimeout(timeoutRef.current);
-  }, []);
-
-  return debounced;
-}
-
-function CesiumGlobe({ lat = 45.42, lng = -75.7, constellation = "iridium", maxSats = 300 }) {
+function CesiumGlobe({ lat = 45.42, lng = -75.7, constellation = "iridium", maxSats = 300, mode = "station" }) {
   const containerRef = useRef(null);
   const viewerRef = useRef(null);
   const [sats, setSats] = useState([]);
@@ -59,7 +44,8 @@ function CesiumGlobe({ lat = 45.42, lng = -75.7, constellation = "iridium", maxS
 
     viewer.camera.flyTo({
       destination: Cesium.Cartesian3.fromDegrees(lng, lat, 10000000),
-    });
+      duration: 0,
+      });
 
     const handler = new Cesium.ScreenSpaceEventHandler(viewer.scene.canvas);
     handler.setInputAction((movement) => {
@@ -80,25 +66,42 @@ function CesiumGlobe({ lat = 45.42, lng = -75.7, constellation = "iridium", maxS
   }, [lat, lng]);
 
   // Fetch satellites
-  const fetchSats = useCallback(async () => {
-    setStatus(`Loading ${constellation}...`);
+  const fetchView = useCallback(async () => {
+    setStatus("Loading...");
+
     try {
-      const res = await fetch(`/api/${constellation}/coverage?lat=${lat}&lng=${lng}&alt=100&maxSats=${maxSats}`);
+      const params = new URLSearchParams({
+        constellation,
+        lat,
+        lng,
+        maxSats,
+        mode
+      });
+
+      const res = await fetch(`/api/${constellation}/coverage?${params}`);
       const data = await res.json();
-      setSats(data.satellites.slice(0, maxSats));
-      setStatus(`${Math.min(data.satellites.length, maxSats)} sats loaded`);
+
+      setSats(data.satellites || []);
+
+      if (viewerRef.current && data.camera) {
+        viewerRef.current.camera.flyTo({
+          destination: Cesium.Cartesian3.fromDegrees(
+            data.camera.lat,
+            data.camera.lng,
+            data.camera.height
+          )
+        });
+      }
+
+      setStatus(`${data.satellites.length} sats loaded`);
     } catch (err) {
       setStatus(`Error: ${err.message}`);
     }
-  }, [constellation, maxSats, lat, lng]);
+  }, [lat, lng, constellation, maxSats, mode]);
 
-  // Debounced fetch
-  const debouncedFetchSats = useDebounceCallback(fetchSats, 400, [fetchSats]);
-
-  // Trigger fetch whenever props change
   useEffect(() => {
-    debouncedFetchSats();
-  }, [constellation, maxSats, lat, lng, debouncedFetchSats]);
+    fetchView();
+  }, [fetchView]);
 
   // Update satellite positions & coverage
   useEffect(() => {
@@ -180,7 +183,7 @@ function CesiumGlobe({ lat = 45.42, lng = -75.7, constellation = "iridium", maxS
     });
 
     sats.forEach(sat => {
-      const available = sat.available ?? sat.elevation > MIN_ELEV_DEG;
+      const available = sat.available;
 
       viewer.entities.add({
         id: `sat-${sat.noradId}`,

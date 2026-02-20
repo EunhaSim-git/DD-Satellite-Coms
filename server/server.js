@@ -169,6 +169,62 @@ console.log('maxSats received:', maxSats);
   }
 });
 
+app.get('/api/constellation-view', async (req, res) => {
+  const {
+    constellation = 'iridium',
+    lat = 45.42,
+    lng = -75.7,
+    alt = 100,
+    maxSats = 300,
+    mode = 'station' // station | constellation
+  } = req.query;
+
+  try {
+    const tleList = await getConstellationTLEs(constellation, Number(maxSats));
+    const observer = { lat: Number(lat), lng: Number(lng), alt: Number(alt) };
+
+    const results = await Promise.all(
+      tleList.map(sat => {
+        try {
+          return computeSatelliteCoverage(
+            sat,
+            observer,
+            constellation
+          );
+        } catch {
+          return null;
+        }
+      })
+    );
+
+    const satellites = results.filter(Boolean);
+
+    // Server decides what to send
+    const filtered =
+      mode === 'station'
+        ? satellites.filter(s => s.available)
+        : satellites;
+
+    const camera =
+      mode === 'constellation'
+        ? { lat: 0, lng: 0, height: 20000000 }
+        : { lat: observer.lat, lng: observer.lng, height: 10000000 };
+
+    res.json({
+      mode,
+      observer,
+      constellation,
+      showCoverage: true,
+      camera,
+      satellites: filtered
+    });
+
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // Catch-all for SPA routing
 app.get(/.*/, (req, res) => {
   res.sendFile(path.resolve(__dirname, '../client/dist/index.html'));
